@@ -1,0 +1,267 @@
+---
+title: 'March 31st: Class Example'
+author: "Jeffrey Arnold and Daniel Yoo"
+date: "3/31/2017"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r}
+library(tidyverse)
+```
+
+## What is regression?
+
+Regression analysis is a procedure by which conditional relationships in data may be described (Berk 2010) 
+
+Linear regression is a method that summarizes how average values of a numerical outcome variable vary over subpopulations defined by linear functions of predictors (Gelman and Hill 2007)
+
+The linear regression model is a regression model that where the outcome variable is a linear function of one or several explanatory variables plus an error term (Wooldridge 2002).
+
+$$y = \beta_{0} + \beta_{1}x + e$$ 
+where $y$ is the outcome variable, $\beta_{0} + \beta_{1}x$ is the linear conditional expectation function (or the regression line), and $e$ is the error term. $y = \beta_{0} + \beta_{1}x + e$ can also be written as $y = E(y|x) + e$.
+
+Fundamentally, regression is a procedure that is used to summarize *conditional* relationships. That is, the average value of an outcome variable conditional on different values of one or more explanatory variables.
+
+### Conditional expectation function with discrete covariates
+
+Consider the `Titanic` dataset included in the recommended R package **datasets**.
+It is a cross-tabulation of 2,201 observations with four variables: 
+
+```{r}
+Titanic <- as_tibble(datasets::Titanic) %>%
+  mutate(Survived = (Survived == "Yes"))
+```
+
+Consider the outcome variable `Survived`.
+The overall mean (proportion since it is binary) for `Survived` is:
+```{r}
+summarise(Titanic, prop_survived = sum(n * Survived) / sum(n))
+```
+
+
+A conditional expectation function is a function that calculates the mean of `Y` for different values of `X`. For example, the conditional expectation function for  
+
+Calculate the CEF for `Survived` conditional on
+
+- `Age`
+```{r}
+Titanic %>% group_by(Age) %>% summarise(prop_survived = sum(n * Survived) / sum(n))
+```
+
+- `Sex`
+```{r}
+Titanic %>% group_by(Sex) %>% summarise(prop_survived = sum(n * Survived) / sum(n))
+```
+
+- `Class`
+```{r}
+Titanic %>% group_by(Class) %>% summarise(prop_survived = sum(n * Survived) / sum(n))
+```
+
+- `Age, Sex, Class` 
+```{r}
+Titanic %>% group_by(Class, Age, Sex) %>% summarise(prop_survived = sum(n * Survived) / sum(n))
+```
+
+What is the predicted probability of surival for each of these characters from the movie *Titanic*?
+
+- Rose (Kate Winslet) : survived, 1st class, adult, female
+```{r}
+Titanic %>% filter(Class=="1st", Age=="Adult", Sex=="Female") %>% summarise(prop_survived = sum(n * Survived) / sum(n))
+```
+- Jack (Leonardo DiCaprio) : died, 3rd class, adult, male
+```{r}
+Titanic %>% filter(Class=="3rd", Age=="Adult", Sex=="Male") %>% summarise(prop_survived = sum(n * Survived) / sum(n))
+```
+- Cal (Billy Zane) : survived, 1st class, adult, male
+```{r}
+Titanic %>% filter(Class=="1st", Age=="Adult", Sex=="Male") %>% summarise(prop_survived = sum(n * Survived) / sum(n))
+```
+###Linear regression and the conditional expectation function
+Now compute the predicted probabilities of survival for each of these characters using linear regression
+
+```{r}
+data.ext <- NULL
+for (i in 1:nrow(Titanic)){
+data.ext <- rbind(data.ext, as.data.frame(lapply(Titanic[i,], rep, Titanic[i, 5])))
+}
+
+Age.reg <- lm(Survived ~ Age, data=data.ext)
+summary(Age.reg)
+
+Sex.reg <- lm(Survived ~ Sex, data=data.ext)
+summary(Sex.reg)
+
+Class.reg <- lm(Survived ~ Class, data=data.ext)
+summary(Class.reg)
+
+titanic.reg <- lm(Survived ~ Class + Age + Sex + Class:Age + Class:Sex + Age:Sex + Class:Age:Sex, data=data.ext)
+summary(titanic.reg)
+
+titanic.characters <- rbind(  c("1st", "Adult", "Female"),
+                              c("3rd", "Adult", "Male"),
+                              c("1st", "Adult", "Male"))
+
+titanic.characters <- as.data.frame(titanic.characters)
+
+rownames(titanic.characters) <- c("Rose", "Jack", "Cal")
+colnames(titanic.characters) <- c("Class", "Age", "Sex")
+
+predict(titanic.reg, titanic.characters)
+```
+
+Why do we use the conditional expectation function to predict or explain the outcome variable? This is because the CEF is the function that best predicts the outcome variable, in the sense that it minimizes the mean squared prediction error. 
+
+## Regression to the Mean
+
+Francis Galton (1886) examined the joint distribution of the heights of parents and their children. He was estimating the average height of children conditional upon the height of their parents. He found that this relationship was approximately linear with a slope of 2/3. 
+
+This means that on average taller parents had taller children, but the children of taller parents were on average shorter than they were, and the children of shorter parents were on average taller than they were. In other words, children's height was more average than parent's height. 
+
+This phenomenon was called regression to the mean, and the term regression is now used to describe conditional relationships (Hansen 2010).
+
+His key insight was that if the marginal distributions of two variables are the same, then the linear slope will be less than one. 
+
+He also found that when the variables are standardized, the slope of the regression of $y$ on $x$ and $x$ on $y$ are the same. They are both the correlation between $x$ and $y$, and they both show regression to the mean.
+
+```{r}
+library("HistData")
+```
+
+
+```{r}
+Galton <- as_tibble(Galton)
+Galton
+```
+
+1. Calculate the regression of children's heights on parents. Interpret the regression.
+```{r}
+child.reg <- lm(child ~ parent, data=Galton)
+child.reg
+```
+
+2. Plot the conditional expectation function. What do you observe?
+```{r}
+plot(Galton$parent, Galton$child, pch=16, cex=0.5, main="Height of Children vs. Parents", xlab="Parent Height (inches)", ylab="Child Height (inches)")
+abline(child.reg, col="Blue")
+```
+
+###Reverse Regression
+3. Calculate the regression of parent's heights on children's heights. Interpret the regression.
+```{r}
+parent.reg <- lm(parent ~ child, data=Galton)
+parent.reg
+```
+
+4.Plot the CEF. What do you observe?
+```{r}
+plot(Galton$child, Galton$parent, pch=16, cex=0.5, main="Height of Parents vs Children", xlab="Child Height (inches)", ylab="Parent Height (inches)")
+abline(parent.reg, col="Red")
+```
+5. Check the mean and variance of parents' and childrens' height
+```{r}
+mean(Galton$parent)
+mean(Galton$child)
+
+var(Galton$parent)
+var(Galton$child)
+```
+6. Perform the both regressions using standardized variables.
+```{r}
+parent.std <- (Galton$parent-mean(Galton$parent))/sd(Galton$parent)
+child.std <- (Galton$child-mean(Galton$child))/sd(Galton$child)
+
+summary(child.std.reg <- lm(child.std ~ parent.std))
+summary(parent.std.reg <- lm(parent.std ~ child.std))
+
+par(mfrow=c(1,2))
+plot(parent.std, child.std, pch=16, cex=0.5, main="Height of Children vs Parents", xlab="Parent Height (inches)", ylab="Child Height (inches)")
+abline(child.std.reg, col="Blue")
+
+plot(child.std, parent.std, pch=16, cex=0.5, main="Height of Parents vs Children", xlab="Child Height (inches)", ylab="Parent Height (inches)")
+abline(parent.std.reg, col="Red")
+```
+
+Regression calculates the conditional expectation function, $f(Y, X) = E(Y | X) + \epsilon$, but we could instead jointly model $Y$ and $X$. This is a topic for multivariate statistical (principal components, factor analyis, clustering).
+In this case, an alternative would be to model the heights of fathers and sons as a bivariate normal distribution.
+```{r}
+ggplot(Galton, aes(y = child, x = parent)) +
+  geom_jitter() +
+  geom_density2d()
+```
+```{r}
+# covariance matrix
+Galton_mean <- c(mean(Galton$parent), mean(Galton$child))
+# variance covariance matrix
+Galton_cov <- cov(Galton)
+Galton_cov
+var(Galton$parent)
+var(Galton$child)
+cov(Galton$parent, Galton$child)
+```
+Calculate density for a multivariate normal distribution
+```{r}
+library("mvtnorm")
+Galton_mvnorm <- function(parent, child) {
+  # mu and Sigma will use the values calculated earlier
+  dmvnorm(cbind(parent, child), mean = Galton_mean,
+          sigma = Galton_cov)
+}
+```
+
+```{r}
+Galton_mvnorm(Galton$parent[1], Galton$child[1])
+```
+
+
+```{r}
+library("modelr")
+Galton_dist <- Galton %>%
+  modelr::data_grid(parent = seq_range(parent, 50), child = seq_range(child, 50)) %>%
+  mutate(dens = map2_dbl(parent, child, Galton_mvnorm))
+```
+Why don't I calculate the mean and density using the data grid? 
+
+```{r}
+library("viridis")
+ggplot(Galton_dist, aes(x = parent, y = child)) +
+  geom_raster(mapping = aes(fill = dens)) +
+  #geom_contour(mapping = aes(z = dens), colour = "white", alpha = 0.3) +
+  #geom_jitter(data = Galton, colour = "white", alpha = 0.2) +
+  scale_fill_viridis() +
+  theme_minimal() +
+  theme(panel.grid = element_blank()) +
+  labs(y = "Parent height (in)", x = "Child height (in)")
+```
+
+Using the [plotly](https://plot.ly/r/getting-started/) library
+we can make an interactive 3D plot:
+
+```{r}
+x <- unique(Galton_dist$parent)
+y <- unique(Galton_dist$child)
+z <- Galton_dist %>%
+     arrange(child, parent) %>%
+     spread(parent, dens) %>%
+     select(-child) %>%
+     as.matrix()
+plotly::plot_ly(z = z, type = "surface")
+                
+```
+
+But with regression we are calculating only one margin.
+
+```{r}
+Galton_means <- Galton %>%
+  group_by(parent) %>%
+  summarise(child = mean(child))
+ggplot(Galton, aes(x = factor(parent), y = child)) +
+  geom_jitter(width = 0) +
+  geom_point(data = Galton_means, colour = "red")
+```
+
+Note that in this example, it doesn't really matter since a bivariate normal distribution happens to describe the data very well.
+This is not true in general, and we are simplifying our analysis by calculating the CEF rather than jointly modeling both.
+
