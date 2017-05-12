@@ -1,0 +1,381 @@
+---
+title: "Lab Notes"
+output:
+  html_document: default
+  pdf_document: default
+date: "2017-4-28"
+---
+
+# Computing OLS Estimates 
+
+Thus far, we've used R functions to compute our OLS estimates. Today, we'll look under the hood to help clarify how these estimates are being produced.
+
+## Betas
+
+Recall that the least squares estimator is one that minimizes the sum of the squared residuals:
+$$SSR(\boldsymbol{\beta}) = \sum^{n}_{i=1}(y_{i} - \boldsymbol{x}'_{i}\boldsymbol{\beta})^2$$
+This has the solution:
+
+\begin{equation*}
+\begin{split}
+SSR(\boldsymbol{\beta}) &= \sum^{n}_{i=1}(y_{i} - \boldsymbol{x}'_{i}\boldsymbol{\beta})(y_{i} - \boldsymbol{x}'_{i}\boldsymbol{\beta})\\
+&= \sum^{n}_{i=1}y^{2}_{i}-2 \boldsymbol{\beta}' \sum^{n}_{i=1}\boldsymbol{x}_{i}y_{i}+ \boldsymbol{\beta}' \sum^{n}_{i=1}\boldsymbol{x_{i}x'_{i}} \boldsymbol{\beta}\\
+\end{split}
+\end{equation*}
+
+\begin{equation*}
+\begin{split}
+0 &= \frac{\partial}{\partial\boldsymbol{\beta}}SSR(\hat{\beta})\\
+&= -2 \sum^{n}_{i=1}\boldsymbol{x_{i}}y_{i}+2\sum^{n}_{i=1}\boldsymbol{x_{i}x_{i}'\hat{\beta}}\\
+\end{split}
+\end{equation*}
+
+\begin{equation*}
+\begin{split}
+\hat{\boldsymbol{\beta}}&=\bigg(\sum^{n}_{i=1} \boldsymbol{x_{i}x_{i}'}\bigg)^{-1}\bigg(\sum^{n}_{i=1}\boldsymbol{x}_{i}y_{i}\bigg)\\
+\end{split}
+\end{equation*}
+
+Now let's compute this manually and check to see if it matches our results using the lm() function
+```{r}
+library(car)
+attach(Duncan)
+
+M2 <- lm(income ~ education + prestige)
+
+x <- cbind(1, education, prestige) # our x matrix is 45 x 3
+y <- income # our y vector is 45 x 1
+
+sumxx <- t(x)%*%x # we multiply the transpose of x by x to get a 3 x 3 matrix
+invsumxx <- solve(sumxx) # we then find the inverse of this
+
+sumxy <- apply(x*y, 2, sum) # we multiply each value of x by y to get a 45 x 3 matrix,
+# then sum the columns to get a 1 x 3 matrix
+
+Betas <- invsumxx%*%sumxy # we then multiply the two together to get our Beta estimates
+Betas
+coefficients(M2)
+```
+
+We've therefore solved for the $\boldsymbol{\hat{\beta}}$ that minimizes the sum of the squared residuals.
+
+We can alternatively express this in matrix notation:
+
+$$y_{i} = \boldsymbol{x}'_{i}\boldsymbol{\beta} + e_{i}$$
+$$\boldsymbol{y} = \boldsymbol{X\beta} + \boldsymbol{e}$$
+When using mathematical notation, it is conventional to treat bold lower case letters as vectors and bolded upper case letters as matrices. Thus, $y_{i}$ and $e_{i}$ lose their subscripts and are bolded, which is the same thing, and $\boldsymbol{x}_{i}$ loses its subscript and is made uppercase, which is the same thing. 
+
+Our sample sums can also be written in matrix notation.
+
+$$\sum^{n}_{i=1}\boldsymbol{x_{i}x_{i}'} = \boldsymbol{X'X}$$
+$$\sum^{n}_{i=1}\boldsymbol{x}_{i}y_{i} = \boldsymbol{X'y}$$
+Therefore the least squares estimator can be alternatively written as
+$$ \boldsymbol{\hat{\beta}} = (\boldsymbol{X'X})^{-1}(\boldsymbol{X'y})$$
+```{r}
+X <- cbind(1, education, prestige)
+y <- income
+
+xprimex <- t(x)%*%x
+xprimexinv <- solve(t(x)%*%x)
+xprimey <- (t(x)%*%y)
+
+BetaMat <- xprimexinv%*%xprimey
+BetaMat
+
+coefficients(M2)
+```
+
+Finally, recall the formula for $\hat\beta$ with simple linear regression: $$\frac{Cov(x,y)}{Var(x)}$$ You may have memorized this formula by now, but where do we get this from?
+
+The simple linear regression formula is as follows:
+$$y_{i} = \beta_{0} + x_{i}\beta_{1} + e_{i}$$
+
+Since we only have one non-constant regressor, we can more easily solve for $\hat{\beta}_{0}$ and $\hat{\beta}_{1}$ by minimizing the sum of the squared residuals:
+$$SSR(\boldsymbol{\beta}) = \sum^{n}_{i=1}(y_{i} - {\beta}_{0} - {x}_{i}{\beta}_{1})^2$$
+This has the solutions
+
+$$\frac{\partial SSR}{\partial \beta_{0}}= \bar{y}_{i} - \hat{\beta}_{1}\bar{x}_{i}$$
+$$\frac{\partial SSR}{\partial \beta_{1}}= \frac{\sum^{n}_{i=1}(x_{i}-\bar{x})(y_{i}-\bar{y})}{\sum^{n}_{i=1}(x_{i}-\bar{x})^{2}} = \frac{Cov(x_{i},y_{i})}{Var(x)}$$
+We can easily check to see that this formula produces the $\hat{\beta}$ using least squares.
+```{r}
+
+M1 <- lm(income ~ education)
+coefficients(M1)
+
+Beta1 <- cov(education, income)/var(education)
+Beta1
+
+Intercept <- mean(income) - Beta1*(mean(education))
+Intercept
+
+```
+
+This works for simple linear regression, but to compute the $\bf{\hat{\beta}}$ in multiple regression, we subtstite $\frac{Cov(x_{i}, y)}{Var(x_{i})}$ with $\frac{Cov(\tilde{x}_{i}, y)}{Var(x_{i})}$, where $\tilde{x}_{i}$ are the residuals from a regression of $x_{i}$ on all the other covariates.
+
+## Sigmas
+
+Now that we've computed $\boldsymbol{\hat{\beta}}$, we'll turn to $\boldsymbol{\hat{\sigma}}^2$. The $\boldsymbol{\hat{\sigma}}^2$ are the estimates of the variances of $\boldsymbol{\hat{\beta}}$. To estimate these variances, we need to familiarize ourselves with the variance-covariance matrix or just the covariance matrix. As implied by the name, a covariance matrix is a matrix that shows us the covariances of two or more variables. Recall that the sample covariance is defined as follows:
+
+$$Cov(x, y) = \frac{\sum^{n}_{i=1}(x_{i}-\bar{x})(y_{i}-\bar{y})}{n-1} = E\big((x_{i}-\bar{x})(y_{i}-\bar{y})\big)$$
+It tells us how two random variables jointly vary with one another. We are also familiar with the Pearson correlation:
+
+$$\rho_{xy}=\frac{Cov(x, y)}{\sigma_{x}\sigma_{y}}$$
+Since the covariance of any variable with itself is its variance, the diagonal elements of the covariance matrix are the variances of each variable. This is because the sample variance is defined as follows:
+
+$$Var(x) = \frac{\sum^{n}_{i=1}(x_{i}-\bar{x})^2}{n-1}$$
+The other elements of the covariance matrix are populated with the covariances between the variables that correspond with each row and column. We can extract the covariance matrix of $\boldsymbol{\hat{\beta}}$ from a linear regression in R very easily.
+
+```{r}
+M2
+vcov(M2)
+```
+For example, the entry in the 3rd row and 2nd column shows us the covariance between $\hat{\beta}_{prestige}$ and $\hat{\beta}_{education}$. Since the covariance between education and prestige and prestige and education are the same, the matrix is symmetric, and the entry in the 2nd row and 3rd column shows us the same thing. The diagonal elements show us the variances of each $\hat{\beta}$. The square root of these diagonals therefore gives us the standard errors.
+
+```{r}
+sqrt(diag(vcov(M2)))
+summary(M2)$coefficients[,2]
+```
+But how do we compute the covariance matrix manually? 
+
+Recall that we derived the following:
+
+$$\boldsymbol{\hat{\beta}}=(\boldsymbol{X'X})^{-1}(\boldsymbol{X'y})$$
+We can $\boldsymbol{y}$ for $\boldsymbol{X\beta}+e$, since $\boldsymbol{y}=\boldsymbol{X\beta}+e$ to obtain the following:
+
+\begin{equation*}
+\begin{split}
+\boldsymbol{\hat{\beta}}&=(\boldsymbol{X'X})^{-1}\boldsymbol{X'y}\\
+&=(\boldsymbol{X'X})^{-1}\boldsymbol{X'(\boldsymbol{X\beta}+e)}\\
+&=(\boldsymbol{X'X})^{-1}\boldsymbol{X'\boldsymbol{X\beta}}+(\boldsymbol{X'X})^{-1}\boldsymbol{X'\boldsymbol{e}}\\
+&=\boldsymbol{\beta}+(\boldsymbol{X'X})^{-1}\boldsymbol{X'\boldsymbol{e}}\\
+\end{split}
+\end{equation*}
+
+As an aside, we can see that $\boldsymbol{\hat{\beta}} = \boldsymbol{\beta}$ when $E(\boldsymbol{X'e})=0$. This means that the explanatory variables are uncorrelated with the error term, when there is no omitted variable bias.
+
+Using the formula for covariance, the covariance matrix of $\boldsymbol{\hat{\beta}}$ can be defined as follows:
+
+$$E\bigg((\boldsymbol{\hat{\beta}}-\boldsymbol{\beta})(\boldsymbol{\hat{\beta}}-\boldsymbol{\beta})\bigg)$$
+This can be expanded to
+
+\begin{equation*}
+\begin{split}
+E\bigg((\boldsymbol{\hat{\beta}}-\boldsymbol{\beta})(\boldsymbol{\hat{\beta}}-\boldsymbol{\beta})\bigg) &= E\bigg(\big((\boldsymbol{X'X})^{-1}\boldsymbol{X'\boldsymbol{e}}\big)\big((\boldsymbol{X'X})^{-1}\boldsymbol{X'\boldsymbol{e}}\big)'\bigg)\\
+&=(\boldsymbol{X'X})^{-1}\boldsymbol{X}'E(\boldsymbol{ee}')\boldsymbol{X}(\boldsymbol{X'X})^{-1}
+\end{split}
+\end{equation*}
+
+This is our formula for the covariance matrix of $\boldsymbol{\hat{\beta}}$. It is sometimes called a sandwich estimator because we see that $\boldsymbol{X'}E(\boldsymbol{ee}')\boldsymbol{X}$ is sandwiched by $(\boldsymbol{X'X})^{-1}$. This is what we obtain when we compute the covariance matrix of a linear model in R.
+
+But as we found in the last homework, there are two distinct cases that need to be considered: one when the conditional variance of the errors is the same (homoskedastic), and another when the conditional variance of the error varies (heteroskedastic).
+
+This determines how we compute the "meat" of the sandwich or $\boldsymbol{X'}E(\boldsymbol{ee}')\boldsymbol{X}$. When the conditional variance of the errors stays the same, we have 
+
+$$Var(\boldsymbol{e}|\boldsymbol{x})=E((\boldsymbol{e}-E(e)^2|\boldsymbol{x})=E(\boldsymbol{e}^2|\boldsymbol{x}) = \boldsymbol{\sigma}^2 = \sigma^2$$
+The sandwich estimator then becomes
+
+$$(\boldsymbol{X'X})^{-1}\boldsymbol{X}'E(\boldsymbol{ee}')\boldsymbol{X}(\boldsymbol{X'X})^{-1}$$
+$$(\boldsymbol{X'X})^{-1}\boldsymbol{X}'\boldsymbol{X}{\sigma^2}(\boldsymbol{X'X})^{-1}$$
+$$(\boldsymbol{X'X})^{-1}{\sigma^2}$$
+
+where $\sigma^2$ is the variance of the errors. We can estimate this using the sample variance of the residuals:
+
+$$s^2 = \frac{\sum^{n}_{i=1}\hat{e^2_{i}}}{n-k}$$
+This gives us
+$$(\boldsymbol{X'X})^{-1}{s^2}$$
+Let's try computing this using R now.
+```{r}
+
+residuals <- resid(M2) # First obtain the residuals from our regression
+
+n <- nobs(M2)
+k <- length(M2$coefficients)
+s2 <- (sum(residuals^2))/(n-k) # Compute the sample variance of the residuals
+
+Sigma2 <- solve(t(x)%*%x)*s2
+Sigma2 # This is the variance covariance matrix
+
+sqrt(diag(Sigma2)) # The square root of the diagonal gives us the standard errors
+
+summary(M2)$coefficients[,2]
+```
+
+In the heteroskedastic case, however, we cannot simply replace $\boldsymbol{X'}E(\boldsymbol{ee}')\boldsymbol{X}$ with $\sigma^2$. Instead, we substitute the estimated residuals into the formula.
+
+$$(\boldsymbol{X'X})^{-1}\boldsymbol{X}'E(\boldsymbol{ee}')\boldsymbol{X}(\boldsymbol{X'X})^{-1}$$
+$$(\boldsymbol{X'X})^{-1}\bigg(\sum^n_{i=1}\boldsymbol{x_{i}x_{i}'}\hat{e}^{2}_{i}\bigg)(\boldsymbol{X'X})^{-1}$$
+Finally, we know that $\hat{e}^2_{i}$ is biased toward zero, so we make a scale adjustment to the estimator and obtain:
+
+$$\boldsymbol{\hat{V}}_{\boldsymbol{\hat{\beta}}}=\frac{n}{n-k}(\boldsymbol{X'X})^{-1}\bigg(\sum^n_{i=1}\boldsymbol{x_{i}x_{i}'}\hat{e}^{2}_{i}\bigg)(\boldsymbol{X'X})^{-1}$$
+These produce what we call robust or heteroskedasticity-consistent standard errors. Let's try to reproduce them in R.
+
+```{r}
+sumxx <- t(x)%*%x
+
+bread <- solve(sumxx) # Compute the bread portions of the sandwich
+
+meat <- t(x)%*%diag(residuals^2)%*%x # Compute the meat portion of the sandwich
+
+adj <- n/(n-k) # Compute the degrees of freedom adjustment
+
+vcovRobust <- adj*bread%*%meat%*%bread
+seRobust <- sqrt(diag(adj*bread%*%meat%*%bread))
+
+library(sandwich)
+M2vcov <- vcovHC(M2, "HC1") # There are several different variations, we choose HC1 
+M2SE <- sqrt(diag(M2vcov))
+
+vcovRobust
+M2vcov
+
+seRobust
+M2SE
+
+```
+# Assumptions of the Linear Regression Model
+
+Now that we've covered mechanics of linear regression in more detail, it's worthwhile to go back and discuss its underlying assumptions to put the parts back together. These assumptions enable us to assess whether or not linear regression is an appropriate tool for estimation.
+
+## Assumption 1: Linearity
+
+$y$ is linearly related to $x$ through the $\beta$ parameters. Linear regression is linear in parameters but not in variables. NWe've covered this in the functional form section of last homework. Nonlinear relationships between $y$ and $x$ are possible with the inclusion of transformed variables. 
+
+## Assumption 2: No Perfect Collinearity
+
+The $x$'s are linearly independent, meaning that none of the $x$ variables are a linear combination of the remaining $x$ variables. When this occurs, the $(\boldsymbol{X'X})$ cannot be inverted, and as we saw least squares regression is then impossible. Put another way, if an additional $x$ variable adds no new information, we cannot estimate its effect on $y$
+
+This matrix is also sometimes called the design matrix because in an experimental setting the researcher can control this by manipulating the distribution of the $x$ variables. It is okay to have correlated regressors. But as we discussed before, if our $x$ variables are highly correlated, then there is little to distinguish then, and this leads to large standard errors.
+
+## Assumption 3: Conditional Mean Zero
+
+This is the key assumption that says that the error term, $e_{i}$ is unrelated to $\boldsymbol{x}_{i}$. It is also expressed as $E(e_{i}|\boldsymbol{x}_{i})=0$. It means that for a given set of $x$ values the error is expected to be zero. It is stronger than saying $e_{i}$ and $\boldsymbol{x}_{i}$ are uncorrelated. This is because $e_{i}$ and $\boldsymbol{x}_{i}$ must also not be related in a nonlinear way. There must be no systematic relationship.
+
+Since the error term includes anything that determines $y_{i}$ that is not measured and included in the regression, omitted variable bias is a violation of this assumption.
+
+Note that by construction, the residuals always sum to zero, and the correlation between the residuals and $x$ will almost always be zero. This does not mean that the errors are uncorrelated with $x$. But if you examine your residuals by plotting them against an $x$ and observe any pattern, this could be a sign of omitted variable bias. 
+
+Controlled experiments and quasi-experiments are a way to address this by making sure this assumption holds. 
+
+## Assumption 4: $(\boldsymbol{x}_{i}, y_{i})$ are I.I.D.
+
+I.I.D. stands for independently and indentically distributed. This assumptions says that the data are a random draw from the actualy population. Sometimes this is misinterpreted. It does not mean that $y_{i}$ and $\boldsymbol{x}_{i}$ are independent of one another. It also does not mean that our $x$ was assigned randomly. It means that observation $i$ is independent of observation $j$. The random sampling framework is necessary for the application of statistical methods of inference. 
+
+Serial correlation is an example of when this assumption is violated. In this case our errors are correlated with one another, and our standard errors are biased. 
+
+## Assumption 5: Homoskedasticity
+
+This assumptions says that the variance of the error term does not change with $\boldsymbol{x}_{i}$. 
+
+$$Var(e_{i}|\boldsymbol{x}_{i})= \sigma^2 \text{ for all } i$$
+As we discussed, when our errors are heteroskedastic, and this assumption is violated, our conventional standard errors are biased. It implies that the diagonal elements of the covariance matrix are distinct from one another. 
+
+## Assumption 6: Normality of errors
+
+This is the least important assumption of linear regression, as it does not influence our estimation of the regression line. This is often embedded in the idea that the errors are a combined effect of many small factors. If this assumption fails, then the standard errors will be biased unless n is large. 
+
+## Gauss-Markov Theorem
+
+The Gauss-Markov Theorem tells us that when Assumptions 1-3 hold, then $\boldsymbol{\beta}_{LS}$ is linear and unbiased. 
+
+If $\boldsymbol{y} = \boldsymbol{X\beta}+\boldsymbol{e}$, then recall:
+
+\begin{equation*}
+\begin{split}
+\boldsymbol{\hat{\beta}}&=(\boldsymbol{X'X})^{-1}\boldsymbol{X'y}\\
+&=(\boldsymbol{X'X})^{-1}\boldsymbol{X'(\boldsymbol{X\beta}+e)}\\
+&=(\boldsymbol{X'X})^{-1}\boldsymbol{X'\boldsymbol{X\beta}}+(\boldsymbol{X'X})^{-1}\boldsymbol{X'\boldsymbol{e}}\\
+&=\boldsymbol{\beta}+(\boldsymbol{X'X})^{-1}\boldsymbol{X'\boldsymbol{e}}\\
+\end{split}
+\end{equation*}
+
+This means that if Assumption 2 holds and $(\boldsymbol{X'X})$ is invertible. And Assumption 3 holds and $\boldsymbol{X'e}=0$, then $\boldsymbol{\hat{\beta}}=\boldsymbol{\beta}$.
+
+When Assumptions 1-5 hold, then we can make a stronger claim. When there is no serial correlation, no heteroskedasticity, no endogeneity, and no perfect collinearity, then the Gauss-Markov theorem holds that least squares is the best linear unbiased estimator (BLUE). This means that among the linear estimators that are unbiased, $\boldsymbol{\hat{\beta}}_{LS}$ has the least variance. 
+
+When Assumptions 1-6 hold, then Gauss-Markov holds that least squares is Minimum Variance Unbiased (MVU). This means that among al estimators that are unbiased, $\boldsymbol{\hat{\beta}}_{LS}$ has the least variance.
+
+# Instrumental Variables
+
+The following replicates Table 6 from The Colonial Origins of Comparative Development: An Empirical Investigation by Daron Acemoglu, Simon Johnson, and James A. Robinson.
+
+```{r}
+setwd("~/desktop")
+library(AER)
+
+data <- read.csv("maketable6.csv", header=T)
+colnames(data)
+
+#--Panel C, OLS Regressions
+
+#--Columns 1 and 2 (Temperature and humidity controls)
+reg1 <- lm(logpgp95 ~ avexpr + temp1 + temp2 + temp3 + temp4 + temp5 + humid1 + humid2 + humid3 + humid4, data=data)
+summary(reg1)
+
+reg2 <- lm(logpgp95 ~ lat_abst + avexpr + temp1 + temp2 + temp3 + temp4 + temp5 + humid1 + humid2 + humid3 + humid4, data=data)
+summary(reg2)
+
+#--Columns 3 and 4 (Control for percent of European descent in 1975)
+reg3 <- lm(logpgp95 ~ avexpr + edes1975, data=data)
+summary(reg3)
+
+reg4 <- lm(logpgp95 ~ lat_abst + avexpr + edes1975, data=data)
+summary(reg4)
+
+#--Columns 5 and 6 (Controls for soil quality, natural resources, and landlocked)
+
+reg5 <- lm(logpgp95 ~ avexpr + steplow + deslow + stepmid + desmid + drystep + drywint + goldm + iron + silv + zinc + oilres + landlock, data=data)
+summary(reg5)
+
+reg6 <- lm(logpgp95 ~ lat_abst + avexpr + steplow + deslow + stepmid + desmid + drystep + drywint + goldm + iron + silv + zinc + oilres + landlock, data=data)
+summary(reg6)
+
+#*--Columns 7 and 8 (Control for ethnolinguistic fragmentation)
+
+reg7 <- lm(logpgp95 ~ avexpr + avelf, data=data)
+summary(reg7)
+reg8 <- lm(logpgp95 ~ lat_abst + avexpr + avelf, data=data)
+summary(reg8)
+
+#--Column 9 (All Controls)
+
+reg9 <- lm(logpgp95 ~ lat_abst + avexpr + temp1 + temp2 + temp3 + temp4 + temp5 + humid1 + humid2 + humid3 + humid4 + edes1975 + avelf + steplow + deslow + stepmid + desmid+ drystep + drywint + goldm + iron + silv + zinc + oilres + landlock, data=data)
+summary(reg9)
+
+#--Panels A and B, IV Regressions
+
+#--Columns 1 and 2 (Temperature and humidity controls)
+
+ivreg1 <- ivreg(logpgp95 ~ avexpr + temp1 + temp2 + temp3 + temp4 + temp5 + humid1 + humid2 + humid3 + humid4 | logem4 + temp1 + temp2 + temp3 + temp4 + temp5 + humid1 + humid2 + humid3 + humid4, data=data)
+summary(ivreg1)
+
+ivreg2 <- ivreg(logpgp95 ~ avexpr + lat_abst + temp1 + temp2 + temp3 + temp4 + temp5 + humid1 + humid2 + humid3 + humid4 | logem4 + lat_abst + temp1 + temp2 + temp3 + temp4 + temp5 + humid1 + humid2 + humid3 + humid4, data=data)
+summary(ivreg2)
+
+#--Columns 3 and 4 (Control for percent of European descent in 1975)
+
+ivreg3 <- ivreg(logpgp95 ~ avexpr + edes1975 | logem4 + edes1975, data=data)
+summary(ivreg3)
+ivreg4 <- ivreg(logpgp95 ~ avexpr + lat_abst + edes1975 | logem4  + lat_abst + edes1975, data=data)
+summary(ivreg4)
+
+#--Columns 5 and 6 (Controls for soil quality, natural resources, and landlocked)
+
+ivreg5 <- ivreg(logpgp95 ~ avexpr + steplow + deslow + stepmid + desmid + drystep + drywint + goldm + iron + silv + zinc + oilres + landlock | logem4 + steplow + deslow + stepmid + desmid + drystep + drywint + goldm + iron + silv + zinc + oilres + landlock, data=data)
+summary(ivreg5)
+
+ivreg6 <- ivreg(logpgp95 ~ avexpr + lat_abst + steplow + deslow + stepmid + desmid + drystep + drywint + goldm + iron + silv + zinc + oilres + landlock | logem4 + lat_abst + steplow + deslow + stepmid + desmid + drystep + drywint + goldm + iron + silv + zinc + oilres + landlock, data=data)
+summary(ivreg6)
+    
+#--Columns 7 and 8 (Control for ethnolinguistic fragmentation)
+
+ivreg7 <- ivreg(logpgp95 ~ avexpr + avelf| logem4 + avelf, data=data)
+summary(ivreg7)
+ivreg8 <- ivreg(logpgp95 ~ avexpr + lat_abst + avelf | logem4 + lat_abst + avelf, data=data)
+summary(ivreg8)
+
+#--Column 9 (All Controls)
+ivreg9 <- ivreg(logpgp95 ~ avexpr + lat_abst + steplow + deslow + stepmid + desmid + drystep + drywint + goldm + iron + silv + zinc + oilres + landlock + edes1975 + avelf | logem4 + lat_abst + steplow + deslow + stepmid + desmid + drystep + drywint + goldm + iron + silv + zinc + oilres + landlock + edes1975 + avelf, data=data)
+summary(ivreg9)
+
+```
+
