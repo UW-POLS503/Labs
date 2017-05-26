@@ -1,0 +1,246 @@
+---
+title: "Lab Notes"
+output:
+  pdf_document: default
+  html_document: default
+date: "2017-5-26"
+---
+
+# Quasi-Experimental Research Designs
+
+When a research design uses random assignment (this is different than random selection), then we have a **randomized** or **true experiment**. Some examples include randomized controlled trials, field experiments, lab experiments, and lab-in-the-field experiments.
+
+When we do not have random assignment, but there are still some observations that receive the treatment of interest when others do not, then we may have what is called a **quasi-experiment**. Quasi-experiments are observational studies in that the treatment is not under the full control of the researcher. That is, the researcher does not randomly assign observations to a treatment or control group. But, circumstances can arise when observations *are* assigned to a treatment or control group, and the mechanism by which this occurs may be considered "as good as random". In such cases, we can compare the average outcome between these groups and obtain an estimate that may be considered causal. 
+
+A point on semantics: quasi-experiments and natural experiments are similar, and they are sometimes used interchangeably. **Natural experiments** are a type of quasi-experment, when the assignment mechanism occurs "naturally" or in a way that is not under the control of the researcher. This leaves a another subset of quasi-experiments when the treatment is not randomized, but the researcher attempts to create an assignment mechanism that is "as if random".
+
+These can be contrasted with **non-experimental designs**, when all observations either receive the treatment or do not receive the treatment, and there is no distinction between the treatment and control group. We'll be convering two common type types of quasi-experimental research designs: **regression discontinuity designs** and **non-equivalent groups designs**. 
+
+# Regression Discontinuity Designs
+
+The central idea underlying the regression discontinuity design (RDD) is an **assignment variable**, also called a **running variable**, that determines assignment into a treatment group or control group after some known cutoff point. Each observation falls into the treatment group or control group based on its value of the assignment variable: when an observation has a value of the assignment variable that is greater than or equal to the cutoff, then it is assigned to the treatment group; when it is below the cutoff, then it is assigned to the control group.
+
+If observations are unable to *precisely* manipulate their value of the assignment variable, so that they cannot sort themselves into the treatment group or control group, then the observations just above and below the cutoff point may be considered "as good as randomized". That is, they are good comparisons of one another. The treatment effect can therefore be estimated as the difference in the average outcome just above and just below the cutoff.
+
+# Examples
+
+One example is by Card and Shore-Sheppard (2004). They are interested in assessing whether Medicaid improves health outcomes. The problem with merely comparing individuals with and without Medicaid on health outcomes is that those individuals who choose to adopt Medicaid may be also the ones more prone to illness (or vice versa). This is the familiar issue of selection bias. Card and Shore-Shappard therefore exploit a RDD using date of birth as the assignment variable. They observe that effective July 1991, US law required states to cover children born after September 30, 1983 until their 18th birthday, while those born on or before the date received no such coverage. The authors therefore exploit this cutoff to estimate the difference beteween these groups in whether Medicaid saves lives.
+
+Another example is by Lee (2008) who is interested in the question of whether political incumbents hold an advantage over non-incumbents in elections. This is based on the hypothesis that politicians elected into office make choices that respond to the demands of the electorate, which raises their chances of re-election. In the United States House of Representatives, incumbents were also successful around 90 percent of the time. The issue, however, is that incumbents may be re-elected for many other reasons, and not just due to their incumbency: they may be richer, more charismatic, or Democratic incumbents may be more successful because they are being elected in heavily Democratic districts. Lee therefore uses a RDD to test the incumbency hypothesis by comparing electoral outcomes of candidates who just barely won elections to those who just barely lost election, which he argues that under mild assumptions are comparable on average except in their incumbency status.
+
+# The Validity of Regression Discontinuity Designs
+
+One advantage of RDDs is the relatively mild set of assumptions compared to other quasi-experimental designs, and they are potentially more credible compared to designs that use difference-in-differences or instrumental variables. Unlike these approaches, one does not need to assume that the design isolates treatment variation that is "as good as randomized". The validity of the design does not rest of the (untestable) assumption of the exclusion restriction or parallel trends. Rather, this is a consequence of the inability to precisely control the assignment near the cutoff point. 
+
+The following summarizes the most important points about the validity of RD designs (from Lee and Lemieux 2008):
+
+- Regression discontinuity designs can be invalid if individuals can *precisely* manipulate the assignment variable. Precise control can be distinguished between imprecise control and complete control.
+
+- If individuals are unable to *precisely* manipulate the assignment variable, even though they exert some influence, a consequence of this is that the variation in treatment near the threshold is randomized as though from a randomized experiment. This implies that all observed and unobserved predetermined characteristics will have identical distributions on either side of the cutoff point in the limit, at smaller and smaller neighborhoods of the threshold.
+
+- Regression discontinuity designs can be analyzed and tested like randomized experiments. Baseline covariates should have the same distribution just above and just below the cutoff, and they can be used to test the validity of the RDD. 
+
+- Graphical presentations can be helpful and informative, but they should not be tilted toward finding an effect or no effect.
+
+- Nonparametric estimation does not represent a solution to functional form issues. It is helpful to view this as a complement rather than a substitute to parametric estimation.
+
+- Goodness-of-fit and other statistical tests can help to rule out overly restrictive specifications
+
+# Estimation
+
+A simple way of implementing RDDs is to estimate two separate regressions on each side of the known cutoff point. The treatment effect can then be computed as the difference between the two intercepts.
+
+The regression on the left hand side of the cutoff point is therefore
+
+$$y_{i} = \alpha_{l} + f_{l}(x_{i}-c) + e_{i}$$
+$\alpha_{l}$ is the intercept of this left-side regression. $x_{i}$ is the assignment variable. It is convenient to subtract $c$ from $x_{i}$, so the cutoff is centered at zero. But this does not affect our estimates. $f_{l}$ is the slope of this regression. 
+
+The regression on the right hand side of the cutoff point is as follows.
+
+$$y_{i} = \alpha_{r} + f_{r}(x_{i}-c) + e_{i}$$
+The treatment effect is therefore estimated as $\alpha_{r}-\alpha_{l}$. A more direct way of estimating these regressions is the run a pooled regression on both sides of the cutoff point.
+
+$$y_{i} = \alpha_{l} + \tau D_{t} + f(x_{i}-c) + e_{i}$$
+In this expression, $\tau = (\alpha_{r}-\alpha_{l})$ and $f(x_{i}-c)=f_{l}(x_{i}-c)+D_{t}\big(f_{r}(x_{i}-c)-f_{l}(x_{i}-c)\big)$. $\tau$ is now the estimate of the treatment effect.
+
+This is the a common way of estimating the RDD using linear regression. However, the slope on both sides of the cutoff can also be made to vary by including the interaction terms between $D_{t}$ and $x_{i}$.
+
+Let's try to replicate some of the tables and figures in Lee (2008)
+
+```{r}
+
+rm(list=ls())
+
+library(stats)
+library(ggplot2)
+library(plm)
+library(rdd)
+
+data <- read.csv("Lee2008.csv", header=T)
+
+colnames(data)
+
+#The data set has the following variables:
+
+#demsharenext: Democrat vote share election t+1     
+#right: Dummy variable of victory in election t
+#difdemshare: Democrat vote share election t
+#rdifdemshare: Interaction between right and difdemshare
+
+#demwinnext: Democrat win prob. election t+1 
+#demshareprev: Democrat vote share election t-1
+#demwinprev: Democrat win prob. election t-1
+#demofficeexp: Democrat political experience
+#othofficeexp: Opposition political experience
+#demelectexp: Democrat electoral experience	
+#othelectexp: Opposition electoral experience		
+```
+
+The outcome variable is *demsharenext* or the vote share of a Democrat in election $t+1$. Its range is from 0 to 1.
+
+```{r}
+summary(data$demsharenext)
+```
+
+
+The assignment variable is $difdemshare$ or the vote share of a Democrat in election $t$. Its range is from -1 to 1, which is 1 percentage point above and below the 50% cutoff for victory that is centered at zero.
+
+```{r}
+summary(data$difdemshare)
+```
+
+
+The treatment variable is $right$. It is a dichotomous variable for whether the candidate won in election $t$.
+
+```{r}
+summary(data$right)
+```
+
+We can visualize the relationship between the outcome variable and the running variable.
+
+```{r}
+
+ggplot(data, aes(difdemshare, demsharenext))+geom_point(size=0.01)+
+  geom_vline(xintercept=0, linetype=2, color="black")
+  
+```
+
+We can also inspect the relationship between the running variable and the treatment variable.
+
+```{r}
+ggplot(data, aes(difdemshare, right))+geom_point(size=0.01)+
+  geom_vline(xintercept=0, linetype=2, color="black")
+  
+```
+
+Using these variables and the RDD set out my Lee, we can estimate the following model.
+
+```{r}
+
+M0 <- lm(demsharenext ~ difdemshare + right, data=data)
+summary(M0)
+
+
+```
+
+How would you interpret the results? 
+
+Lee builds on this simple model to include an interaction term between the treatment variable and the running variable and several polynomial terms of both the running variable and the interaction. These additional terms account for the functional form of the regression line on both sides of the cutoff. The following reults are from Table 3 in Lee (2001, 2008). 
+
+```{r}
+
+model <- formula(demsharenext ~ difdemshare + difdemshare2 + difdemshare3 
+                 + difdemshare4 + rdifdemshare + rdifdemshare2 + 
+                   rdifdemshare3 + rdifdemshare4 + right)
+
+column1 <- lm(model, data=data)
+summary(column1)
+
+column2 <- lm(update(model, "~.+demshareprev+demwinprev"), data=data)
+summary(column2)
+
+column3 <- lm(update(model, "~.+demofficeexp+othofficeexp"), data=data)
+summary(column3)
+
+column4 <- lm(update(model, "~.+demelectexp+othelectexp"), data=data)
+summary(column4)
+
+column5 <- lm(update(model, "~.+demshareprev+demwinprev+demofficeexp+othofficeexp+demelectexp+othelectexp"), data=data)
+summary(column5)
+
+demsharenext <- lm(demsharenext ~ demshareprev+demwinprev+demofficeexp+
+     othofficeexp+demelectexp+othelectexp, data=na.omit(data))
+
+demsharenextres <- predict(demsharenext)
+col6data <- cbind(na.omit(data), demsharenextres)
+
+column6 <- lm(update(model, "demsharenextres~."), data=col6data)
+summary(column6)
+
+column7 <- lm(update(model, "difdemsharenext~.+ demwinprev+demofficeexp+othofficeexp+demelectexp+othelectexp"), data=data)
+summary(column7)
+
+column8 <- lm(update(model, "demshareprev~.+ demwinprev+demwinprev+demofficeexp+othofficeexp+demelectexp+othelectexp"), data=data)
+summary(column8)
+
+```
+
+# Testing the Validity of Regression Discontinuity Designs
+
+There are several diagnostics that can be used to test the validity of RD designs. These diagnostics are used to show whether the observations around the cutoff point are comparable to one another or the density of the observations around the cutoff point is continuous. 
+
+Lee (2008) uses the former in Table 1.
+
+```{r}
+LeeTable1 <- read.csv("table_one_final.csv")
+
+LeeTable1 <- cbind(LeeTable1[,1], round(LeeTable1[,2:9], digits = 3))
+
+colnames(LeeTable1) <- c("Variable", "All - winner" , "All - loser", "|Margin|<.5 - winner", "|Margin|<.5 - loser", "|Margin|<.05 - winner", "|Margin|<.05 - loser", "Parametric fit - winner", "Parametric fit - loser")
+
+LeeTable1
+
+```
+
+Lee uses this table to show that except for the first two variables, which are the outcome variables, the averages of all others become very similar to one another as the margin of victory becomes smaller. This suggests that those candidates near the cutoff point are comparable to one another.
+
+McCrary (2006) develops another test that observes the density of the running variable at the cutoff point. This test is based on the intuition that if there is no manipulation or sorting around the cutoff point, then the density should be continuous around the cutoff point. That is, the probability of observing an observation just above or below the cutoff should be around the same. Conversely, if observations are able to sort into the treatment (or control group), the density around the cutoff should be discontinuous.
+
+```{r}
+par(mar=c(1,1,1,1))
+
+DCdensity(data$difdemshare, 0)
+```
+
+Alternatively, it is possible to perform balance tests by substituting the outcome variable of interest with different baseline covariates. This formally tests whether the mean of the outcome is statistically different on each side of the cutoff point. 
+
+It is also possible to plot these baseline covariates along the y-axis and the running variable on the x-axis. If there is no sorting around the cutoff, then there should be no visual evidence of a discontinuity, unlike with the outcome variable. Like a randomized experiment, the distribution of these baseline covariates should not change discontinuously at the threshold.
+
+# Fuzzy RD
+
+Often, the treatment may be determined *partly* by whether the assignment variable passes a known cutoff point. This this different from the RD design discussed so far, when the assignment variable is completely determined past the cutoff. Reasons for this include imperfect compliance by program participants. This setting is referred to as a "fuzzy" RD design versus a "sharp" RD design. In the former case, the probability of treatment does not jump from 0 to 1.
+
+When this occurs, the jump in the relationship between the assignment variable and the outcome variable at the cutoff can no longer be interpreted as an average treatment effect. Instead, the treatment effect can be recovered by dividing the jump in the relationship between the assignment variable and the outcome variable by the fraction induced to take-up the treatment at the threshold. 
+
+This is akin to an instrumental variable approach with a dichotomous instrument or Wald estimator. In this case, all of the assumptions and interpretability of instrumental variable is applied to the fuzzy RD, including monotonicity and excludability. 
+
+# Checklist for RD Design Implementation
+
+This checklist is from Lee and Lemieux (2008). 
+
+1. To assess the possibility of manipulation of the assignment variable, show its distribution
+
+2. Present the main RD graph using binned local averages
+
+3. Graph a benchmark polynomial specification
+
+4. Explore the sensitivity of the results to a range of bandwidths, and a range of order to the polynomial
+
+5. Conduct a parallel RD analysis on the baseline covariates
+
+6. Explore the sensitivity of the results to the inclusion of baseline covariates
+
+
+
+
+
